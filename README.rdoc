@@ -1,0 +1,410 @@
+= Curbala
+
+Wiki[https://github.com/rickfix/curbala/wiki] | RDocs[http://rdoc.info/projects/rickfix/curbala] 
+
+Curbala is a curb[http://rubygems.org/gems/curb/] wrapper that acts as a client for externally-hosted services.
+
+In the system which Curbala was extracted from, the original curbala-esque implementation addressed some issues/requirements:
+
+1. environment specific configuration of base service URLs
+2. DRY'd references to base service URLs
+3. different http/https requirements in different environments
+4. a means to simulate service calls
+   + decoupled rails development from api development when interfaces were defined but service was not available yet or was broke.
+   + some of our services were not available in development mode
+   + did not want to hit external services in specs
+5. our internal services developers used curl to test their work.  wrapping curb provided good common ground.
+6. a log trail of each service call was desirable
+   + the application data which the action request was constructed.
+   + the url that was invoked
+   + the payload that was sent (post, put)
+   + the http status of the request.
+   + the raw and unpacked response
+   + our non-production systems where doing logging of each database read and write.
+     makes at least as much sense to log similar stuff for each service call.
+7. some service calls were inline in controllers and exhibited 'long line' and 'long arg list' code smells
+
+
+Curbala is implemented as a framework pattern which requires extending classes to implement two methods:
+1. action_url_segment()
+2. invoke_action()
+
+Extending classes can also implement/override base class implementations of the following methods:
+1. unpack_response() : perform xml/json/... response extraction/conversion
+2. success_message()
+3. fail_message()
+
+
+== Installation
+
+1. In <b>Rails 3</b>, add this to your Gemfile and run the +bundle+ command.
+
+  gem "curbala"
+  gem "curb" # currently tested against 0.8.1 : need to rectify when your app already uses curb...
+
+2. bundle exec gem install
+
+   should pull in curbala (and possibly curb)
+  
+== Getting Started
+
+Try using the curbala action generator in your app:
+
+This example sets uses the publicly accessible Acromine service as a rudimentary intro to curbala.
+The Acromine service is accessible at http://www.nactem.ac.uk/software/acromine/dictionary.py?sf=QUERY
+(where QUERY is the acronym to query on).
+
+Run the curbala action generator: it will ask you 4 questions:
+
+    $ rails g curbala:action
+
+    a
+    Enter path to directory where service/action should be installed [app/models] :  
+    What is the service name for the new action? cromine
+          create  config/acromine.yml
+          create  app/models/acromine/service.rb
+
+    What is the new action name? get
+          create  app/models/acromine/get.rb
+
+    Generate spec/models/acromine/get_spec.rb? [Yn] Y
+          create  spec/models/acromine/get_spec.rb
+            gsub  config/acromine.yml
+            gsub  config/acromine.yml
+            gsub  config/acromine.yml
+            gsub  app/models/acromine/service.rb
+            gsub  app/models/acromine/service.rb
+            gsub  app/models/acromine/service.rb
+            gsub  app/models/acromine/get.rb
+            gsub  app/models/acromine/get.rb
+            gsub  app/models/acromine/get.rb
+            gsub  spec/models/acromine/get_spec.rb
+            gsub  spec/models/acromine/get_spec.rb
+            gsub  spec/models/acromine/get_spec.rb
+
+  What just happened?
+
+  1. The generator asked :
+  
+  Enter path to directory where service/action should be installed [app/models] : 
+   
+  * default (taken in this example) is app/models
+  
+  + you could specify something like app/clients or lib or lib/services/clients, whatever directory adheres to your apps organizational sensibilities
+
+
+  2.1 The generator asked for the name of the service, and *acromine* was entered:
+  
+  What is the service name for the new action? acromine
+
+  
+  2.2 Two files were created:
+  
+  config/acromine.yml
+  
+  app/models/acromine/service.rb
+
+
+  3.1 The generator asked for the action name and *get* was entered:
+  
+  What is the new action name? get
+
+  3.2 The action class for get was created:
+  
+  app/models/acromine/get.rb
+
+
+  4.1 The generator asked if a spec should be generated and *Y* (to indicate yes) was entered:
+  
+  Generate spec/models/acromine/get_spec.rb? [Yn] Y
+
+  4.2 A spec was generated:
+  
+  spec/models/acromine/get_spec.rb
+
+  Hopefully your app is already using rspec.
+  
+  The generated spec is designed to help red/green your way toward gluing your config, service and action components together.
+
+
+Run specs and you should see something like:
+   
+   $ bundle exec rake spec
+   
+   Failures:
+
+   1) Acromine::Get invoke_action and http response code is 200 should indicate success
+      Failure/Error: @curbala_instance.url.should == @expected_url
+        expected: "http://base service url/service url segment/action url segment"
+             got: "http://base service url/service url segment/construct action segment of Acromine Get url in action_url_segment() method at /path to your/app/models/acromine/get.rb:9" (using ==)
+      # ./spec/models/acromine/get_spec.rb:66:in `verify_curbala_action'
+      # ./spec/models/acromine/get_spec.rb:49
+
+
+Notice the instructive portion of the 'got:' message:
+
+*construct action segment of Acromine Get url in action_url_segment() method at /path to your/app/models/acromine/get.rb:9*
+
+
+This is where you must decide how you want to slice up the service url among config, service and action.
+
+The acromine service url is http://www.nactem.ac.uk/software/acromine/dictionary.py?sf=QUERY
+
+There are a number of ways you can slice this one.
+1. config/acromine.yml:                                   http://www.nactem.ac.uk/software/acromine/
+   app/models/acromine/service.rb:service_url_segment() : "dictionary.py"
+   app/models/acromine/get.rb:action_url_segment() :      "?sf=#{@args_hash['sf']}"
+   
+2. config/acromine.yml:                                   http://www.nactem.ac.uk/software/acromine/dictionary.py?sf=
+   app/models/acromine/service.rb:service_url_segment() : ""
+   app/models/acromine/get.rb:action_url_segment() :      @args_hash['sf']
+
+3. config/acromine.yml:                                   http://www.nactem.ac.uk/
+   app/models/acromine/service.rb:service_url_segment() : "software/acromine/"
+   app/models/acromine/get.rb:action_url_segment() :      "dictionary.py?sf=#{@args_hash['sf']}"
+
+
+Option 1. most appealed to my aesthetic sense when I was playing with this example,
+so I edited the 3 files/methods as indicated.
+
+
+Rerun specs and should see something like:
+
+Failures:
+
+  1) Acromine::Get invoke_action and http response code is 200 should indicate success
+     Failure/Error: @curbala_instance.url.should == @expected_url
+       expected: "http://base service url/service url segment/action url segment"
+            got: "http://base service url/service url segment/?sf=" (using ==)
+     # ./spec/models/acromine/get_spec.rb:66:in `verify_curbala_action'
+     # ./spec/models/acromine/get_spec.rb:49
+
+
+The 'got:' value shows that the Acromine::Get.action_url_segment() seems to be doing its thing.
+
+Time to update expectations in the spec
+Insert the following two lines at spec/models/acromine/get_spec.rb:49
+
+    @args_hash['sf'] = 'HTTP'
+    @expected_url = "http://base service url/service url segment/?sf=HTTP"
+
+
+Rerun specs and should see something like:
+
+    Failures:
+
+      1) Acromine::Get invoke_action and http response code is 200 should indicate success
+         Failure/Error: @curbala_instance.message.should == @expected_message
+           expected: "Successful (200)"
+                got: "Service Not Available: undefined method `implement invoke_action() method in /path to your/app/models/acromine/get.rb:12' for #<Acromine::Get:0x10e5400b0>" (using ==)
+         # ./spec/models/acromine/get_spec.rb:69:in `verify_curbala_action'
+         # ./spec/models/acromine/get_spec.rb:51
+
+The 'got:' message is leading us to the next step to glue the Get action:
+'implement invoke_action() method in /path to your/app/models/acromine/get.rb:12'
+
+The invoke_action is where you tinker with, and invoke an http action (get/put/post/delete) on, the Curl::Easy (from the curb gem) instance in the @curl class variable.
+
+For the acromine example, we just have to invoke http_get,
+so change the guts of app/models/acromine/get.rb:invoke_action() to be:
+
+    def invoke_action
+      curl.http_get
+    end
+
+and adjust spec so that the http_get is expected by inserting the following prior at line 51:
+
+    @mocked_curl.should_receive(:http_get)
+    
+
+Rerun specs and they should pass.
+
+
+In a browser, hit the following url:
+http://www.nactem.ac.uk/software/acromine/dictionary.py?sf=HTTP
+
+
+The response is JSON.
+Curbala lets you massage/translate the raw string response however is appropriate
+to get it in a format that is palatable for invoking models, controllers and views
+by letting you override the Curbala::Action.unpack_response() base class implementation.
+Curbala provides two methods for helping unpack repsonses: hash_from_xml_response() and hash_from_json_response().
+
+
+Implement the following in app/models/acromine/get.rb:
+
+    def unpack_response
+      hash_from_json_response
+      @response = (@response[0]['lfs'] rescue 'no results') if @success == true
+    end
+    
+
+and adjust spec by inserting the following two lines at line spec/models/acromine/get_spec.rb:52
+
+    @mocked_response = '[{"sf": "HTTP", "lfs": [{"lf": "hypertext transfer protocol", "freq": 6, "since": 1995, "vars": [{"lf": "Hypertext Transfer Protocol", "freq": 3, "since": 1996}, {"lf": "hypertext transfer protocol", "freq": 3, "since": 1995}]}]}]'
+    @expected_response_data = [{"freq"=>6, "vars"=>[{"freq"=>3, "lf"=>"Hypertext Transfer Protocol", "since"=>1996}, {"freq"=>3, "lf"=>"hypertext transfer protocol", "since"=>1995}], "lf"=>"hypertext transfer protocol", "since"=>1995}]
+    
+    
+Rerun specs and they should pass.
+
+
+Oh goody, now we can try this in console (copy and paste the code snippet):
+
+    $ rails c
+    
+    >> def acro(acronym)
+         args = {'sf' => acronym}
+         get = Acromine::Service.invoke(:get, args)
+         get.success && get.response.kind_of?(Array) ? get.response.collect{|h| h['lf']} : []
+       end
+    => nil
+    >> # invoke the acromine service:
+    >? acro 'ABC'
+    
+    *** you should see something like:
+    => ["ATP-binding cassette", "avidin-biotin-peroxidase complex", "aneurysmal bone cyst", "abacavir", "advanced breast cancer", "antibody binding capacity", "Aberrant Behavior Checklist", "activity-based costing", "Activities-specific Balance Confidence", "argon beam coagulator", "aspiration biopsy cytology", "active breathing control", "activated B-cell-like", "absolute blast count", "adenoid basal carcinoma", "approximate Bayesian computation", "antibodies bound per cell", "alveolar bone crest", "accelerated blood clearance", "Alternative Birthing Center", "artificial beta cell", "American Biophysics Corporation", "adenine nucleotide binding cassette", "Movement Assessment Battery for Children", "Alcoholic Beverage Control", "The area between curves"]
+    
+    >> acro 'A'
+    => []
+    
+
+The acromine service is up and running and ready to be integrated into your models, controllers and views.
+
+
+
+== Final version of files for acromine example
+
+1. config/acromine.yml
+
+
+    url: http://www.nactem.ac.uk/software/acromine/
+
+    test:
+      simulate: true
+
+
+2. app/models/acromine/service.rb
+
+
+    class Acromine::Service < Curbala::Service
+
+      def self.service_url_segment(associated_model)
+        "dictionary.py"
+      end
+
+      def self.service_qualifier
+        'Acromine'
+      end
+
+      def self.config_file
+        'acromine.yml'
+      end
+
+    end
+
+
+3. app/models/acromine/get.rb
+
+
+    class Acromine::Get < Curbala::Action
+  
+      def action_url_segment
+        "?sf=#{@args_hash['sf']}"
+      end
+  
+      def invoke_action
+        curl.http_get
+      end
+  
+      def unpack_response
+        hash_from_json_response
+        @response = (@response[0]['lfs'] rescue 'no results') if @success == true
+      end
+
+    end
+
+
+4. spec/models/acromine/get_spec.rb
+
+    require File.expand_path(File.dirname(__FILE__) + '/../../spec_helper')
+
+    describe 'Acromine::Get' do
+      before(:each) do
+        @config = {'simulate' => true, 'url' => 'http://base service url/'}
+        (@logger = mock).should_receive(:debug).any_number_of_times
+      end
+  
+      it "should source action_url_segment, success_message and simulated response from Acromine::Get implementation when simulated" do
+        Curl::Easy.should_receive(:new).never # simulated : invoke_action() is not invoked.
+        @curbala_action_instance = Acromine::Get.new('service url segment/', @config, {}, @logger)
+        @curbala_action_instance.url.should == "http://base service url/service url segment/#{@curbala_action_instance.action_url_segment}"
+        @curbala_action_instance.success.should be_true
+        @curbala_action_instance.http_status.should == 200
+        @curbala_action_instance.message.should == "Successful (200)"
+        @curbala_action_instance.response.should == "simulated response"
+      end
+  
+      describe 'invoke_action' do
+        before(:each) do
+          @args_hash = {}
+          @config['simulate'] = false
+          @expected_url = "http://base service url/service url segment/dictionary.py?sf=HTTP"
+          @mocked_curl = mock # (:body_str => @mocked_response)
+        end
+    
+        describe "and http response code is 200" do
+      
+          it "should indicate success" do
+            @args_hash['sf'] = 'HTTP'
+            @mocked_response = '[{"sf": "HTTP", "lfs": [{"lf": "hypertext transfer protocol", "freq": 6, "since": 1995, "vars": [{"lf": "Hypertext Transfer Protocol", "freq": 3, "since": 1996}, {"lf": "hypertext transfer protocol", "freq": 3, "since": 1995}]}]}]'
+            @expected_response_data = [{"freq"=>6, "vars"=>[{"freq"=>3, "lf"=>"Hypertext Transfer Protocol", "since"=>1996}, {"freq"=>3, "lf"=>"hypertext transfer protocol", "since"=>1995}], "lf"=>"hypertext transfer protocol", "since"=>1995}]
+            @mocked_curl.should_receive(:http_get)
+            @expected_message = 'Successful (200)'
+            verify_curbala_action(Acromine::Get, 200, be_true)
+          end
+        end
+        
+        def verify_curbala_action(class_under_test, forced_http_status, be_expected_condition)
+          @mocked_curl.should_receive(:body_str).any_number_of_times.and_return(@mocked_response)
+          Curl::Easy.should_receive(:new).with(@expected_url).and_return(@mocked_curl)
+          @mocked_curl.should_receive(:timeout=).with(10)
+          @mocked_curl.should_receive(:response_code).any_number_of_times.and_return(forced_http_status)
+          @curbala_instance = class_under_test.new('service url segment/', @config, @args_hash, @logger)
+          @curbala_instance.url.should == @expected_url
+          @curbala_instance.message.should == @expected_message
+          @curbala_instance.success.should be_expected_condition
+          @curbala_instance.response.should == @expected_response_data
+          @curbala_instance.http_status.should == forced_http_status
+        end
+    
+      end
+  
+    end
+
+
+
+== Wiki Docs
+
+* {Home}[https://github.com/rickfix/curbala/wiki]
+
+
+== Project Status
+
+Active.
+
+Extracted from non-gem implementation of in-production {ProfitSteams}[http://profitstreams.com] system.
+
+
+== Questions or Problems?
+
+If you have any issues with Curbala which you cannot find the solution to in the documentation[https://github.com/rickfix/curbala/wiki],
+please add an {issue on GitHub}[https://github.com/rickfix/curbala/issues]
+or fork the project and send a pull request.
+
+If I have time, I'll try to help.
+
+
+== Thanks
+
+Thanks to Eric Rapp for permission to extract this gem
+and for giving me plenty of space and time to tinker and tune.

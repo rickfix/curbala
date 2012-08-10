@@ -1,0 +1,26 @@
+# tips:
+# - can specify url at top level and override in environment-specific block as needed.
+# - be sure http or https is specified as needed for each unsimulated environment.
+# - block needed for each of your application's environments.
+# - do not recommend running test unsimulated : unit tests should be hitting external APIs.
+# - development makes no connectivity assumptions and, by default, runs simulated.
+#   set/manipulate action instance simulated_response implementations as needed.
+#   if service is available in development mode, set 'simulate' to false and specify url.
+#   - standard disclaimer about multiple developers testing concurrently in unsimulated mode : things could get weird...
+# - can specify additional parameters that an action instance can plug in via its invoke_action() implementation.
+#   handy for plugging in other environment-specific, or somehow appropriately specifiable, goo.
+
+# url: http://SERVICE_NAME_DOWNCASE base service url for all environments
+
+test:
+  simulate: true
+  url: http://test SERVICE_NAME_DOWNCASE base service url
+
+development:
+  simulate: true
+  url: http://development SERVICE_NAME_DOWNCASE base service url
+
+production:
+  simulate: false
+  url: http://TODO__SPECIFY_LEFT_JUSTIFIED_ENVIRONMENT_DEPENDENT_PORTION_OF_SERVICE_URL_IN___config__SERVICE_NAME_DOWNCASE.yml
+  

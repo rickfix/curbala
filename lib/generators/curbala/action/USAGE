@@ -1,0 +1,5 @@
+Description:
+  The curbala:action generator creates a new Curbala::Action class in app/models/curbala/services directory.
+  You can move this file anywhere you want as long as it is in the load path.
+  TODO : args or prompts?
+  
