@@ -268,6 +268,19 @@ Oh goody, now we can try this in console (copy and paste the code snippet):
     => []
     
 
+Take a peek in your log and you should see something like:
+
+
+    Acromine::Get: http://www.nactem.ac.uk/software/acromine/dictionary.py?sf=HTTP
+    config:        {"url"=>"http://www.nactem.ac.uk/software/acromine/", "simulate"=>false}
+    args_hash:     {"sf"=>"HTTP"}
+    http status:   200,   success: true,   message: Successful (200)
+    raw response string:
+    [{"sf": "HTTP", "lfs": [{"lf": "hypertext transfer protocol", "freq": 6, "since": 1995, "vars": [{"lf": "Hypertext Transfer Protocol", "freq": 3, "since": 1996}, {"lf": "hypertext transfer protocol", "freq": 3, "since": 1995}]}]}]
+    unpacked response:  Array
+    [{"vars"=>[{"since"=>1996, "lf"=>"Hypertext Transfer Protocol", "freq"=>3}, {"since"=>1995, "lf"=>"hypertext transfer protocol", "freq"=>3}], "since"=>1995, "lf"=>"hypertext transfer protocol", "freq"=>6}]
+
+
 The acromine service is up and running and ready to be integrated into your models, controllers and views.
 
 
