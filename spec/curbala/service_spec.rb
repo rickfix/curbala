@@ -48,7 +48,7 @@ describe 'Curbala::Service' do
       @expected_config ||= @mocked_config['test']
       File.should_receive(:open).with("./config/test curbala config file.yml").and_return('mocked open file') # TODO : Rails.root + 
       YAML.should_receive(:load).with('mocked open file').and_return(@mocked_config)
-      TestCurbalaActionClass::SomeAction.should_receive(:new).with('test_curbala_service_url_segment', @expected_config, 'args_hash', logger, 200, nil).and_return('test service response')
+      TestCurbalaActionClass::SomeAction.should_receive(:new).with('test_curbala_service_url_segment', @expected_config, 'args_hash', logger, 200, nil, nil).and_return('test service response')
       TestCurbala::Service.invoke(:some_action, 'args_hash', @mocked_model).should == 'test service response'
     end
   end

@@ -8,12 +8,12 @@ describe 'Curbala::Action' do
     @expected_message = 'Successful (200)'
   end
 
+	let(:mocked_response_xml) { "<?xml version='1.0' encoding='UTF-8'?><root>mocked response fields</root>" }
+
   describe 'initialize' do    
     describe 'and not simulated' do
-      before(:each) { @mocked_response_xml = "<?xml version='1.0' encoding='UTF-8'?><root>mocked response fields</root>" }
-      
       it 'should use base implementation of unpack_response when extending class does not implement unpack_response' do
-        unsimulated_curbala_action(CurbalaActionTestClass, @mocked_response_xml)
+        unsimulated_curbala_action(CurbalaActionTestClass, mocked_response_xml)
       end
     
       it 'should use implemented unpack_response method when extending class implements unpack_response' do
@@ -55,7 +55,7 @@ describe 'Curbala::Action' do
   # end
   
   describe 'xml request utilities' do
-    before(:each) { unsimulated_curbala_action(CurbalaActionTestClass, "") }
+    before(:each) { unsimulated_curbala_action(CurbalaActionTestClass, mocked_response_xml) }
     
     describe 'xml_request' do
       it 'should set curl header Accept and Content-Type values to application/xml' do
@@ -84,8 +84,21 @@ describe 'Curbala::Action' do
     end
   end
 
+	describe 'invoke_curl_action' do
+		before do
+			Curl::Easy.stub(:new).with(@expected_url).and_return(mocked_curl)
+		end
+		let(:mocked_curl) { double(:body_str => mocked_response_xml) }
+		let(:timeout) { 2 }
+
+		it "sets the timeout from initialization params" do
+			mocked_curl.should_receive(:timeout=).with(timeout)
+			curbala_action(CurbalaActionTestClass, config(false), 200, "", timeout)
+		end
+	end
+
   describe 'xml response utilities' do
-    before(:each) { unsimulated_curbala_action(CurbalaActionTestClass, "") }
+    before(:each) { unsimulated_curbala_action(CurbalaActionTestClass, mocked_response_xml) }
 
     describe 'hash_from_xml_response' do
       it 'should set response to a hash representation of xml in raw_response_string' do
@@ -105,7 +118,7 @@ describe 'Curbala::Action' do
   end
   
   def unsimulated_curbala_action(test_class, expected_response)
-    @mocked_curl = mock(:body_str => @mocked_response_xml)
+    @mocked_curl = mock(:body_str => mocked_response_xml)
     Curl::Easy.should_receive(:new).with(@expected_url).and_return(@mocked_curl)
     @mocked_curl.should_receive(:timeout=).with(10)
     Curl::PostField.should_receive(:content).with(:test_arg, 'test arg value').and_return('whatever post field content returns')
@@ -130,9 +143,9 @@ describe 'Curbala::Action' do
     @curbala_instance.http_status.should == expected_response_code
   end
 
-  def curbala_action(class_under_test, config_hash, expected_response_code, expected_response_data)
+  def curbala_action(class_under_test, config_hash, expected_response_code, expected_response_data, timeout=10)
     (logger = mock).should_receive(:debug).any_number_of_times # TODO : tighten this up?
-    @curbala_instance = class_under_test.new('service url segment/', config_hash, @args_hash, logger, expected_response_code, expected_response_data)
+    @curbala_instance = class_under_test.new('service url segment/', config_hash, @args_hash, logger, expected_response_code, expected_response_data, timeout)
   end
     
   def config(simulate = true)
