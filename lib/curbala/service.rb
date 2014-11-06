@@ -15,7 +15,7 @@ module Curbala
       config_path     = "#{Rails.root rescue '.'}/config/#{config_file}"
       config_contents = File.open(config_path)
       config_yml      = YAML.load(config_contents)
-      env             = (Rails.env rescue 'test')
+      env             = environment
       env_yml         = config_yml[env]
       env_yml       ||= {}
       env_yml['simulate'] ||= false
@@ -28,6 +28,9 @@ module Curbala
       logger ||= (Rails.logger rescue nil)
       logger ||= Logger.new(STDOUT)
     end
-    
+
+    def.self environment
+    	const_defined?('Rails') ?  Rails.env : (ENV['RAILS_ENV'] || ENV['ENVIRONMENT'])
+    end
   end
 end
